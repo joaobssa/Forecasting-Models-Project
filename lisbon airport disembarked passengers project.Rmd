@@ -1,0 +1,447 @@
+---
+title: "Forecasting Passenger Arrivals at Lisbon Airport post COVID-19 restrictions"
+subtitle: "A Comparative Study of 2020-Based Forecast Against 2024 Observed Data"
+date: "2024-11-03"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE) # echo=FALSE won't print code to the outpu file
+
+library(fpp)
+library(fma)
+library(readr)
+
+```
+
+## Introduction
+
+This work was prepared for the "Forecasting Methods" Curricular Unit of the Master's in Statistics and Information Management of the Nova Information Management School.
+
+The goal of the project is to understand whether the number of disembarked passengers in the Lisbon Airport has recovered after COVID-19 pandemic.
+
+As will be seen in the data, airport traffic was extremely affected during the years of 2020 and 2021 due to travel restrictions implemented during the COVID-19 pandemic. By observing the data it seems like the number of customers that disembark in the Lisbon Airport has recovered and is now close to the expected level if there had been no interruption due to the COVID-19 pandemic.
+
+In this work we will use as much historical data as possible up to the COVID-19 disruption and predict what would have been the evolution of passenger disembarkments in the LisWe bon Airport. We will then compare this against the actual values and understand whether the effect of COVID-19 has been erased and the trajectory of disembarks is back to what it used to be.
+
+The data used in this project was obtained from the [Instituto Nacional de Estatistica](https://www.ine.pt/xportal/xmain?xpid=INE&xpgid=ine_indicadores&indOcorrCod=0000862&contexto=pi&selTab=tab0) website.
+
+We had to change the selection conditions:  
+
+* Data reference period: "Select all""
+* Geographic localization: "Lisboa""
+* Type of traphic: "Total""
+* Nature of traffic: "Total"
+
+## Methodology
+
+The methodology adopted in this work adheres to the Box-Jenkins methodology and consists of the following steps:
+* Identification of the Model:
+  + Plot the time series
+  + Apply the necessary transformations (Box-Cox transform, Integration, Seasonal integration) to approximate the Series to a weakly stationary one.
+  + Observe the Autocorrelation Function (ACF) and Partial Autocorrelation Function (PACF) to identify the order of potential models.
+* Estimation
+  + Use R algorithms to estimate the model parameters and evaluate their statistical significance and Model statistics.
+* Diagnosis
+  + Evaluate the Model's efficacy by observing the Ljung-Box statistic, ACF of residuals, the Standardised residuals plot, and the standardized residuals' Q-Q plot.
+
+## Dataset Description
+
+The data provides the number of Passengers that disembarked in the Lisbon Airport from January 1963 to August 2024.
+
+However, the retrieved data has several issues:  
+
+* Missing data from January 1983 to December 1984
+* Missing data from January 1990 to December 1999
+* No records from January 2000 to December 2003
+
+## Filterered Data
+
+To handle the issues discussed above, we have filtered the data to the years since 2004
+
+```{r passenger disembarks from 2004 to 2024-08}
+
+# load the data
+lisbon_airport_disembark <- read_delim("ine_lisbon_disembarked_passengers.csv", 
+  delim = ";", 
+  escape_double = FALSE, 
+  trim_ws = TRUE,
+  col_types = cols(value = col_number())
+)
+
+# turn data into a time series
+lis_airport_disembark_ts <- ts(
+  lisbon_airport_disembark$value, 
+  start = 2004,       # either provide the start or the end
+  frequency = 12      # if we don't provide start and end, we need a frequency
+)    
+
+# plot the series
+plot.ts(lis_airport_disembark_ts, 
+        main="Passenger Arrivals to the Lisbon Airport from 2004 to August 2024", 
+        xlab="Time",
+        ylab="# of Passengers"
+)
+
+```
+The effect of the COVID-19 restrictions is very clear in the data, and as discussed above, it seems like the time series is close to what would have been expected had there been no restrictions.
+
+As our goal is to use the data up until COVID-19 restrictions, we will only use data up until December 2019.
+
+
+```{r passenger disembarks from 2004 to 2020-01}
+
+# create window until 2020
+lis_disembark_filt <-  window(               # cuts the time series to a portion. use this to exclude long cycles
+  lis_airport_disembark_ts,
+  start = 2004,
+  end = 2020    
+)
+
+# plot the series
+plot.ts(lis_disembark_filt,  
+        main="Passenger Arrivals to the Lisbon Airport from 2004 to 2020", 
+        xlab="Time",
+        ylab="# of Passengers")
+
+```
+```{r passenger disembarks from 2004 to 2020-01 ts-display}
+
+tsdisplay (   # Plots a time series along with its acf and either its pacf, lagged scatterplot or spectrum
+  lis_disembark_filt, 
+  plot.type="scatter",    # we can choose pacf, lagged scatterplot or spectrum
+  main="Passenger Arrivals to the Lisbon Airport - tsdisplay plot"
+)
+
+```
+Above we can see the plot of the time series along with it's ACF and the plot of a value $Y_t$ versus the previous value $Y_{t-1}$ - i.e. a value and it's lag.
+
+From the time series plot it looks like Variance for the more recent portion is slightly higher than for the initial part. This is something we will have to handle in order to generate a good model.
+
+From the ACF we can conclude that there is a clear seasonal and trend effect in the series. This is also something we will have to address before we can properly analyze the series and decide what the correct model is. 
+
+From the $Y_t$ vs $Y_{t-1}$ plot we can see that there is an high correlation between the value and it's lag, which means that there is an high linear relationship and that this is a good candidate for forecasting.
+
+```{r passenger disembarks from 2004 to 2020-01 decomposition}
+
+lis_airport_disembark_decomp <- decompose(
+  lis_disembark_filt,
+  type = "multiplicative"
+)
+
+
+plot(lis_airport_disembark_decomp)
+
+```
+
+Above we can see the decomposition of the series into the 3 time series movements:  
+
+* Trend - it's clear that there is a positive trend in the time series, especially for more recent values
+* Seasonality - this component is also very distinguishable in the above plot. As we could expect, since this is a monthly time series.
+* Noise (random component) - essentially what remains of the series when trend and seasonality is removed.
+
+
+## Stationary Series
+
+In order to successfully apply Time Series models, we first need to have a Stationary Time Series. The characteristics of these series are:  
+
+* The mean $E(x_t)$ is constant for all $t$ - this means there should be no Trend in the data
+* The variance $Var(x_t)$ is constant for all $t$ - this means that variance should not increase or decrease 
+* The covariance between $x_t$ and $x_{t-h}$ is constant for all $t$
+
+As we have seen above, our series has both trend and non-constant variance.
+
+### Handle non-constant Variance
+
+To address this issue we apply the [Box-Cox transformation](https://en.wikipedia.org/wiki/Power_transform#Box–Cox_transformation). This transformation is dependent on a $\lambda$ that has to be caculated.  
+
+* $\lambda = 1$ - then the function simply returns the original value, i.e. no transformation is applied
+* $lambda = 0$ - then $ln(x)$ is returns, i.e. this is just a log-transform.
+
+This means that if the $\lambda$ is 1, then there is no need to apply the Box-Cox transformation.However, as seen below, this is not the case:
+
+```{r passenger disembarks from 2004 to 2020-01 BoxCox lambda}
+
+lambda <- BoxCox.lambda(lis_disembark_filt)
+lambda
+
+
+```
+
+Below is the series we obtain after the transformation has been applied. Notice how the plot now varies between $400$k and $1.2$M.
+
+```{r}
+
+lis_disembark_filt_transf <- BoxCox(lis_disembark_filt, lambda = lambda)
+plot.ts(lis_disembark_filt_transf)
+
+```
+
+### Handle Trend
+
+To handle Trend we simply take the first difference of the Time Series.
+
+If we look at the shape of the time series after this operation, it seems like it more closely resembles a stationary time series - there is no longer trend in the data and variance seems similar across the whole series. However, it's still possible to observe seasonality across
+
+
+```{r}
+
+# handle trend by taking the first difference
+lis_disembark_filt_transf_diff1 <- diff(lis_disembark_filt_transf, 1)
+plot(lis_disembark_filt_transf_diff1)
+```
+
+
+If we look to the ACF and PACF plots of this series, it's still unclear what sort of Model is the correct for this data, and that is because we still need to address Seasonality.
+
+```{r}
+
+# inspect non-seasonal components
+par(mfrow = c(1,2))
+acf(lis_disembark_filt_transf_diff1, main="ACF")
+pacf(lis_disembark_filt_transf_diff1, main="PACF")
+par(mfrow = c(1,1))
+```
+
+### Handle Seasonality
+
+As stated in the previous section, it seems like there is still a seasonality component in the data. In fact, if we look at the monthplot below, it's clear that there is indeed a seasonality factor after the first difference, as the averages in March or July are much higher than for November.
+
+```{r}
+monthplot(lis_disembark_filt_transf_diff1,
+  main = "Seasonal Deviation plot (post Box-Cox transform and Differencing)",
+  ylab = "",
+  xlab = "Month"
+)
+```
+
+
+Addressing Seasonality is similar to how we did with the Trend: we take the difference of a value $x_t$ with the value in the previous season $x_{t-s}$ where $s$ is the seasonality factor.
+
+Because this is a monthly time series, we know that the correct seasonality factor is $12$.
+
+If we observe the time series now, this is much closer to the shape of a non-stationary time series. However, there are still a few values before 2010 that are concerning, as they stick out from the rest of the series and could potentially compromise our results. However, applying the KPSS test results in a p-value greater than 0.1, meaning that the series is indeed Trend-stationary after all transformations were applied.
+
+```{r}
+lis_disembark_filt_transf_diff1_diff12 <- diff(lis_disembark_filt_transf_diff1, 12)
+
+plot(lis_disembark_filt_transf_diff1_diff12,
+  main = "Passenger Arrivals to the Lisbon Airport - post Transformations",
+  ylab = "",
+  xlab = "Time"
+)
+
+kpss.test(lis_disembark_filt_transf_diff1_diff12, null="T")
+
+# inspect non-seasonal components
+par(mfrow = c(1,2))
+acf(lis_disembark_filt_transf_diff1_diff12, main = "ACF")
+pacf(lis_disembark_filt_transf_diff1_diff12, main = "PACF")
+par(mfrow = c(1,1))
+
+```
+
+
+## Identifying Potential Models
+
+If we observe the ACF and PACF plots, we can now make a more informed decision on what sort of model is correct for this time series. It's important to remember that we have taken the first non-seasonal and seasonal differences, so any models we use will include the non-seasonal and seasonal Integration of order 1.
+
+First, observing the non-Seasonal part of the ACF and PACF (lags up to 12):  
+
+* Because the ACF has a spike on lag 1 and the PACF seems to exponentially decay to 0, it seems like the $1^{st}$ Order Moving Average Model is a good candidate to model this data.
+* It's also possible to say that the ACF is quickly decayng to 0 and the PACF has 2 or 3 spikes, which would mean that the $2^{nd}$ Order Auto-regressive Model is a good condidate.
+* Finally, we could choose an ARIMA model such as:
+  + (2,1,1) and (3,1,1)
+
+As for the Seasonal part of the ACF and PACF (lags that are multiples of 12)
+* It looks like the ACF has one spike in lag 12 and the PACF is tapering to 0, which means the Seasonal $1^{st}$ Order Moving Average Model is a good candidate.
+
+
+```{r}
+
+# inspect seasonal components
+par(mfrow = c(1,2))
+acf(lis_disembark_filt_transf_diff1_diff12, 48, main = "ACF")
+pacf(lis_disembark_filt_transf_diff1_diff12, 48, main = "PACF")
+par(mfrow = c(1,1))
+```
+
+
+## Choosing the correct ARIMA
+
+We will test the first option discussed above:  
+
+* $\text{ARIMA}(p, d, q)(P,D,Q)_s = \text{ARIMA}(0, 1, 1)(0,1,1)_s$
+
+This seems like a good model:  
+
+* The 2 parameters are statiscally significant
+* Residuals are white noise
+  + residuals oscilate between 0 and 1, and,
+  + residuals have no significant Auto-correlation for any lags
+* the p-values of the Ljung-Box statistic are all above 0.05
+* the plot of the fitted-values against residuals is a little concerning
+  + for very high values we always have negative residuals
+  + but, it's generally well distributed across the whole plot for the remaining values
+
+```{r}
+
+fit<-Arima(lis_disembark_filt_transf,order = c(0,1,1),
+             seasonal=list(order=c(0,1,1),
+                           period=12))
+
+fit
+
+
+
+tsdiag(fit) # check the 3 plot of the residuals
+# ljung-box - accumulated autocorrelation should be all above 0.05
+
+
+par(mfrow = c(1,1))
+plot(as.vector(fitted(fit)), as.vector(residuals(fit)),
+     ylab = "Residuals",
+     xlab = "Fitted Values")
+abline(h=0)
+
+# check p-value for the Box-Ljung test
+Box.test(residuals(fit), lag=12, fitdf=2, type="Ljung") # fitdf = p + q + p_s + q_s
+# because the p-value is above 0.05 we can reject the null hypothesis and conclude that the residuals are independent
+
+rs <- fit$residuals
+stdres <- rs/sqrt(fit$sigma2)
+qqnorm(stdres, main="Normal Q-Q Plot of Std Residuals")
+qqline(stdres, col=4)
+
+```
+
+We can now test our second hypothesis:  
+
+* $\text{ARIMA}(p, d, q)(P,D,Q)_s = \text{ARIMA}(2,1,1)(0,1,1)_s$
+
+We get similar results, however:  
+
+* AIC is slightly higher - even though only marginally
+* one of the parameters $\theta_1$ is not statiscally significant, so we should still discard it just by the rule of parsimony
+
+
+```{r}
+
+fit_2<-Arima(lis_disembark_filt_transf,order = c(2,1,1),
+             seasonal=list(order=c(0,1,1),
+                           period=12))
+
+fit_2
+
+# check p-value for the Box-Ljung test
+Box.test(residuals(fit_2), lag=12, fitdf=4, type="Ljung") # fitdf = p + q + p_s + q_s
+# because the p-value is above 0.05 we can reject the null hypothesis and conclude that the residuals are independent
+
+tsdiag(fit_2) # check the 3 plot of the residuals
+# ljung-box - accumulated autocorrelation should be all above 0.05
+
+
+par(mfrow = c(1,1))
+plot(as.vector(fitted(fit_2)), as.vector(residuals(fit_2)))
+
+```
+
+
+Our third hypothesis was:  
+
+* $\text{ARIMA}(p, d, q)(P,D,Q)_s = \text{ARIMA}(3,1,1)(1,1,1)_s$
+
+This looks like the worst model:
+
+* AIC is slightly higher than even the second hypothesis, so we would still discard this by the rule of parsimony
+* Only one of the parameters is statistically significant
+
+
+```{r}
+
+fit_3<-Arima(lis_disembark_filt_transf,order = c(3,1,1),
+             seasonal=list(order=c(0,1,1),
+                           period=12))
+
+fit_3
+
+# check p-value for the Box-Ljung test
+Box.test(residuals(fit_3), lag=12, fitdf=5, type="Ljung") # fitdf = p + q + p_s + q_s
+# because the p-value is above 0.05 we can reject the null hypothesis and conclude that the residuals are independent
+
+tsdiag(fit_3) # check the 3 plot of the residuals
+# ljung-box - accumulated autocorrelation should be all above 0.05
+
+
+par(mfrow = c(1,1))
+plot(as.vector(fitted(fit_3)), as.vector(residuals(fit_3)))
+
+```
+
+As such, we can conclude that the $\text{ARIMA}(p, d, q)(P,D,Q)_s = \text{ARIMA}(0, 1, 1)(0,1,1)_s$ is the best hypothesis.
+
+### Forecasting
+
+Now that we have the model, we can finally make our forecast
+
+```{r}
+
+plot(forecast(fit, h=60))
+
+```
+
+
+However, because we applied the BoxCox transform, we will need to Invert the transformation in order to compare against the data set.
+
+Analysing the results, we can see that even though the observed values are below the forecast with data up to 2020 (blue line), they are still within the 95% confidence interval (red lines). As such, we can conclude that passenger disembarks in the Lisbon Airport have recovered after COVID-19, and have gone back to within what we would expect in 2020.  
+
+
+```{r}
+
+# plot the series
+
+plot.ts(
+  lis_airport_disembark_ts,
+  ylim = c(0, 2500000),
+  main = "Passenger Arrivals to the Lisbon Airport: Forecast vs Observed Values",
+  ylab = "# of Passengers",
+  xlab = "Time"
+)
+
+lines(InvBoxCox(forecast(fit, h=60)$mean ,lambda=lambda), col = 4, lwd = 3)
+lines(InvBoxCox(forecast(fit, level = 95, h=60)$lower ,lambda=lambda), col = 2, lwd = 0.5)
+lines(InvBoxCox(forecast(fit, level = 95, h=60)$upper ,lambda=lambda), col = 2, lwd = 0.5)
+
+
+
+```
+
+## Auto ARIMA
+
+Finally, we have tested the results o Auto-Arima.
+
+We can see that the resulting model is slightly different than the won we considered. It has lower statistics, and all Parameters are statistically significant. But overall, this is still a very similar model to the one we chose using the Box-Jenkins methodology.
+
+
+```{r}
+
+fit_auto <- auto.arima(lis_disembark_filt_transf)
+fit_auto
+
+tsdiag(fit_auto) # check the 3 plot of the residuals
+# ljung-box - accumulated autocorrelation should be all above 0.05
+
+
+
+plot(as.vector(fitted(fit_auto)), as.vector(residuals(fit_auto)))
+
+```
+
+
+
+
+
+
+

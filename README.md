@@ -1,0 +1,7 @@
+# Introduction
+
+The COVID-19 pandemic started as an outbreak in China in December 2019 and quickly spread to the rest of the world by early 2020 [1](https://en.wikipedia.org/wiki/COVID-19_pandemic). Due to the high infectious rate of this disease in closed spaces, several restrictions on air travel were put into place. In Portugal, restrictions to air travel started in 2020 on March 18 [2](https://diariodarepublica.pt/dr/legislacao-consolidada/despacho/2020-165641703) and remained in effect, with some variation, until July of 2023 [3](https://diariodarepublica.pt/dr/legislacao-consolidada/despacho/2020-165641703). Due to this, passenger arrivals to the Lisbon airport were severely affected during the restriction period and started to return to normal as restrictions were removed.
+
+This study investigates whether passenger arrivals at Lisbon Airport have returned to expected levels absent COVID-19 restrictions. Using disembarked passenger data from the Instituto Nacional de Estatísticas (INE) from 1983 to August 2024 [4](https://www.ine.pt/xportal/xmain?xpid=INE&xpgid=ine_indicadores&indOcorrCod=0000862&contexto=pi&selTab=tab0), we will forecast expected arrivals up to December 2024 based on pre-2020 data and compare this with actual data to assess recovery.
+
+This work was prepared for the "Forecasting Methods" Curricular Unit of the Master's in Statistics and Information Management of the Nova Information Management School, and all data was used solely for Academic purposes.
