@@ -1,2 +1,5 @@
 *.xlsx
 *.html
+*.RData
+*.Rhistory
+.DS_Store
