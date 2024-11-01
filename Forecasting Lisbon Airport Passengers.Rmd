@@ -61,7 +61,7 @@ However, the retrieved data has several issues:
 
 To handle the issues discussed above, we have filtered the data to the years since 2004
 
-```{r passenger disembarks from 2004 to 2024-08}
+```{r}
 
 # load the data
 lisbon_airport_disembark <- read_delim("ine_lisbon_disembarked_passengers.csv", 
@@ -91,7 +91,7 @@ The effect of the COVID-19 restrictions is very clear in the data, and as discus
 As our goal is to use the data up until COVID-19 restrictions, we will only use data up until December 2019.
 
 
-```{r passenger disembarks from 2004 to 2020-01}
+```{r}
 
 # create window until 2020
 lis_disembark_filt <-  window(               # cuts the time series to a portion. use this to exclude long cycles
@@ -107,7 +107,7 @@ plot.ts(lis_disembark_filt,
         ylab="# of Passengers")
 
 ```
-```{r passenger disembarks from 2004 to 2020-01 ts-display}
+```{r}
 
 tsdisplay (   # Plots a time series along with its acf and either its pacf, lagged scatterplot or spectrum
   lis_disembark_filt, 
@@ -124,7 +124,7 @@ From the ACF we can conclude that there is a clear seasonal and trend effect in 
 
 From the $Y_t$ vs $Y_{t-1}$ plot we can see that there is an high correlation between the value and it's lag, which means that there is an high linear relationship and that this is a good candidate for forecasting.
 
-```{r passenger disembarks from 2004 to 2020-01 decomposition}
+```{r}
 
 lis_airport_disembark_decomp <- decompose(
   lis_disembark_filt,
@@ -162,7 +162,7 @@ To address this issue we apply the [Box-Cox transformation](https://en.wikipedia
 
 This means that if the $\lambda$ is 1, then there is no need to apply the Box-Cox transformation.However, as seen below, this is not the case:
 
-```{r passenger disembarks from 2004 to 2020-01 BoxCox lambda}
+```{r}
 
 lambda <- BoxCox.lambda(lis_disembark_filt)
 lambda
